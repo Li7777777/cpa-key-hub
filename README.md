@@ -44,6 +44,7 @@ Run the container:
 docker run -d \
   --name cpa-key-hub \
   --restart unless-stopped \
+  --add-host=host.docker.internal:host-gateway \
   --env-file .env \
   -e HOST=0.0.0.0 \
   -p 10057:10057 \
@@ -69,6 +70,8 @@ services:
     image: ghcr.io/li7777777/cpa-key-hub:latest
     container_name: cpa-key-hub
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
@@ -116,6 +119,7 @@ docker rm -f cpa-key-hub
 docker run -d \
   --name cpa-key-hub \
   --restart unless-stopped \
+  --add-host=host.docker.internal:host-gateway \
   --env-file .env \
   -e HOST=0.0.0.0 \
   -p 10057:10057 \
@@ -126,5 +130,5 @@ docker run -d \
 ## Notes
 
 - The container must listen on `0.0.0.0`; the examples above set this with `-e HOST=0.0.0.0`.
-- If CPA management runs on the same Docker host but outside this container, use an address the container can reach, such as `host.docker.internal` on Docker Desktop.
+- If CPA management runs on the same Docker host but outside this container, use an address the container can reach. The examples map `host.docker.internal` to the Docker host with `--add-host=host.docker.internal:host-gateway`.
 - Do not commit `.env` or `data/database.json`; they contain runtime data and secrets.

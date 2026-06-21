@@ -44,6 +44,7 @@ docker pull ghcr.io/li7777777/cpa-key-hub:latest
 docker run -d \
   --name cpa-key-hub \
   --restart unless-stopped \
+  --add-host=host.docker.internal:host-gateway \
   --env-file .env \
   -e HOST=0.0.0.0 \
   -p 10057:10057 \
@@ -69,6 +70,8 @@ services:
     image: ghcr.io/li7777777/cpa-key-hub:latest
     container_name: cpa-key-hub
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
@@ -116,6 +119,7 @@ docker rm -f cpa-key-hub
 docker run -d \
   --name cpa-key-hub \
   --restart unless-stopped \
+  --add-host=host.docker.internal:host-gateway \
   --env-file .env \
   -e HOST=0.0.0.0 \
   -p 10057:10057 \
@@ -126,5 +130,5 @@ docker run -d \
 ## 注意事项
 
 - 容器内必须监听 `0.0.0.0`，上面的命令已经通过 `-e HOST=0.0.0.0` 设置好了。
-- 如果 CPA 管理服务跑在同一台机器、但不在这个容器里，需要填写容器能访问到的地址。Docker Desktop 通常可以用 `host.docker.internal`。
+- 如果 CPA 管理服务跑在同一台机器、但不在这个容器里，需要填写容器能访问到的地址。上面的命令会通过 `--add-host=host.docker.internal:host-gateway` 把 `host.docker.internal` 指向 Docker 宿主机。
 - 不要提交 `.env` 或 `data/database.json`，里面会包含运行数据和密钥。
