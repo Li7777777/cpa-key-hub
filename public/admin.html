@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CPA Key Hub 管理端</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="CPA API 密钥分发">
+        <span class="brand-mark">C</span>
+        <span>CPA Key Hub</span>
+      </a>
+      <nav class="nav-actions" aria-label="页面导航">
+        <a class="ghost-link" href="/">领取页</a>
+        <button class="ghost-button hidden" id="logout-button" type="button">
+          <i data-lucide="log-out"></i>
+          <span>退出</span>
+        </button>
+      </nav>
+    </header>
+
+    <main class="page-shell admin-shell">
+      <section class="workspace login-workspace" id="login-view" aria-labelledby="login-title">
+        <div class="intro-panel compact">
+          <p class="eyebrow">Admin</p>
+          <h1 id="login-title">管理端登录</h1>
+          <p class="lead">使用后端配置文件中的管理 CDK 进入工作台。</p>
+        </div>
+
+        <form class="panel form-panel" id="login-form" novalidate>
+          <label class="field" for="admin-cdk">
+            <span>管理 CDK</span>
+            <input id="admin-cdk" name="adminCdk" type="password" autocomplete="current-password" />
+            <small class="field-error" data-error-for="adminCdk"></small>
+          </label>
+          <button class="primary-button" type="submit">
+            <i data-lucide="log-in"></i>
+            <span>进入管理端</span>
+          </button>
+          <p class="form-message" id="login-message" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="admin-dashboard hidden" id="admin-view" aria-labelledby="admin-title">
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">Dashboard</p>
+            <h1 id="admin-title">密钥分发管理</h1>
+          </div>
+          <button class="secondary-button" id="refresh-button" type="button">
+            <i data-lucide="refresh-cw"></i>
+            <span>刷新</span>
+          </button>
+        </div>
+
+        <section class="metrics-grid" aria-label="分发概览">
+          <div class="metric">
+            <span>启用 CDK</span>
+            <strong id="metric-active-cdks">0</strong>
+          </div>
+          <div class="metric">
+            <span>累计创建</span>
+            <strong id="metric-records">0</strong>
+          </div>
+          <div class="metric">
+            <span>运行模式</span>
+            <strong id="metric-mode">-</strong>
+          </div>
+        </section>
+
+        <section class="panel admin-panel" aria-labelledby="cdk-title">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Invite</p>
+              <h2 id="cdk-title">CDK 配置</h2>
+            </div>
+          </div>
+
+          <form class="inline-form" id="cdk-form" novalidate>
+            <label class="field" for="new-cdk">
+              <span>CDK</span>
+              <input id="new-cdk" name="code" placeholder="CPA-TEAM-001" />
+            </label>
+            <label class="field" for="new-label">
+              <span>备注</span>
+              <input id="new-label" name="label" placeholder="内测批次" maxlength="40" />
+            </label>
+            <label class="field small-field" for="new-max-uses">
+              <span>次数</span>
+              <input id="new-max-uses" name="maxUses" type="number" min="0" value="0" />
+            </label>
+            <button class="primary-button compact-button" type="submit">
+              <i data-lucide="plus"></i>
+              <span>添加</span>
+            </button>
+          </form>
+
+          <p class="form-message" id="cdk-message" role="status" aria-live="polite"></p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>CDK</th>
+                  <th>备注</th>
+                  <th>状态</th>
+                  <th>使用</th>
+                  <th>创建时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="cdk-table"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel admin-panel" aria-labelledby="records-title">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Records</p>
+              <h2 id="records-title">创建记录</h2>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>IP</th>
+                  <th>CDK</th>
+                  <th>昵称</th>
+                  <th>Key</th>
+                </tr>
+              </thead>
+              <tbody id="record-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/admin.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+.ace-tool/
+.env
+.env.local
+node_modules/
+data/database.json
+*.log

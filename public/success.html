@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API 密钥创建成功</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="CPA API 密钥分发">
+        <span class="brand-mark">C</span>
+        <span>CPA Key Hub</span>
+      </a>
+      <nav class="nav-actions" aria-label="页面导航">
+        <a class="ghost-link" href="/">返回领取页</a>
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      <section class="workspace success-workspace" aria-labelledby="success-title">
+        <div class="intro-panel compact">
+          <p class="eyebrow">Created</p>
+          <h1 id="success-title">API 密钥创建成功</h1>
+          <p class="lead warning-text">密钥只显示一次，请立即保存。刷新或离开此页后将无法再次查看完整密钥。</p>
+        </div>
+
+        <section class="panel success-panel" id="success-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Secret</p>
+              <h2>你的 API 密钥</h2>
+            </div>
+            <span class="soft-badge">One-time</span>
+          </div>
+
+          <div class="key-display" id="key-display">
+            <textarea id="api-key" readonly spellcheck="false" aria-label="API 密钥"></textarea>
+            <button class="icon-button" id="copy-key" type="button" aria-label="复制 API 密钥" title="复制 API 密钥">
+              <i data-lucide="copy"></i>
+            </button>
+          </div>
+
+          <div class="success-meta" id="success-meta"></div>
+
+          <div class="button-row">
+            <a class="secondary-button" href="/">创建另一个密钥</a>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/success.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+.ace-tool/
+.git/
+.github/
+node_modules/
+data/database.json
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
