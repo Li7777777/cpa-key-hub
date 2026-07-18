@@ -1,11 +1,27 @@
 # CPA Key Hub
 
+[![Docker](https://img.shields.io/github/actions/workflow/status/Li7777777/cpa-key-hub/docker-publish.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=Docker)](https://github.com/Li7777777/cpa-key-hub/actions/workflows/docker-publish.yml)
+[![GHCR](https://img.shields.io/badge/GHCR-latest-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/Li7777777/cpa-key-hub/pkgs/container/cpa-key-hub)
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+[![Last commit](https://img.shields.io/github/last-commit/Li7777777/cpa-key-hub?branch=main&style=flat-square&logo=git&logoColor=white)](https://github.com/Li7777777/cpa-key-hub/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/Li7777777/cpa-key-hub?style=flat-square&logo=github)](https://github.com/Li7777777/cpa-key-hub/stargazers)
+[![LINUX DO - Where possible begins](.github/assets/linux-do-community-badge.svg)](https://linux.do)
+
 [English README](README.md)
 
 CPA Key Hub 是一个轻量 Node.js 分发页面，用邀请码 CDK 为用户创建 CPA API Key。用户在公开页面领取密钥，管理员在后台维护 CDK，并查看领取记录。
 
-仓库地址：[Li7777777/cpa-key-hub](https://github.com/Li7777777/cpa-key-hub)  
 Docker 镜像：`ghcr.io/li7777777/cpa-key-hub:latest`
+
+## 界面截图
+
+### 领取页
+
+![CPA Key Hub 领取页](.github/assets/screenshots/claim-page.png)
+
+### 管理后台
+
+![CPA Key Hub 管理后台](.github/assets/screenshots/admin-dashboard.png)
 
 ## 页面
 
@@ -24,13 +40,20 @@ CPA_MANAGEMENT_KEY=change-this-management-key
 API_KEY_PREFIX=sk-cpa-
 DRY_RUN=false
 ADMIN_SESSION_HOURS=12
+TRUST_PROXY=false
 ```
+
+启动前必须修改 `ADMIN_CDK`。当 `DRY_RUN=false` 时，还必须修改 `CPA_MANAGEMENT_KEY`。如果必需的密钥为空或仍使用示例值，服务会拒绝启动。
 
 如果只是本地试用，不想请求 CPA 管理 API，可以设置：
 
 ```bash
 DRY_RUN=true
 ```
+
+服务默认启用内存级防爆破：同一客户端在 10 分钟内连续输错 10 次领取 CDK，将锁定 15 分钟；管理员 CDK 连续输错 5 次，将锁定 30 分钟。只有当所有请求都经过可信反向代理，并且代理会覆盖 `X-Forwarded-For` 时，才应设置 `TRUST_PROXY=true`。
+
+系统不再默认启用任何领取 CDK。启动后请先登录管理页创建唯一 CDK；旧数据中仍启用的 `DEMO-CDK-001` 会在启动时自动停用。
 
 拉取镜像：
 

@@ -138,6 +138,33 @@
               <tbody id="record-table"></tbody>
             </table>
           </div>
+
+          <nav class="table-pagination" id="record-pagination" aria-label="创建记录分页" aria-busy="false">
+            <p class="pagination-summary" id="record-page-summary" aria-live="polite">共 0 条记录</p>
+            <div class="pagination-controls">
+              <button
+                class="icon-button pagination-button"
+                id="record-prev-page"
+                type="button"
+                aria-label="上一页"
+                title="上一页"
+                disabled
+              >
+                <i data-lucide="chevron-left"></i>
+              </button>
+              <span class="pagination-status" id="record-page-status">第 1 / 1 页</span>
+              <button
+                class="icon-button pagination-button"
+                id="record-next-page"
+                type="button"
+                aria-label="下一页"
+                title="下一页"
+                disabled
+              >
+                <i data-lucide="chevron-right"></i>
+              </button>
+            </div>
+          </nav>
         </section>
       </section>
     </main>

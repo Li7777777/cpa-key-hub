@@ -8,6 +8,20 @@ const cdkForm = document.querySelector('#cdk-form');
 const cdkMessage = document.querySelector('#cdk-message');
 const cdkTable = document.querySelector('#cdk-table');
 const recordTable = document.querySelector('#record-table');
+const recordPagination = document.querySelector('#record-pagination');
+const recordPageSummary = document.querySelector('#record-page-summary');
+const recordPageStatus = document.querySelector('#record-page-status');
+const recordPrevButton = document.querySelector('#record-prev-page');
+const recordNextButton = document.querySelector('#record-next-page');
+const RECORDS_PAGE_SIZE = 20;
+
+let recordPaginationState = {
+  page: 1,
+  pageSize: RECORDS_PAGE_SIZE,
+  totalRecords: 0,
+  totalPages: 1
+};
+let recordsLoading = false;
 
 window.lucide?.createIcons();
 boot();
@@ -43,6 +57,14 @@ logoutButton.addEventListener('click', async () => {
 });
 
 refreshButton.addEventListener('click', loadDashboard);
+
+recordPrevButton.addEventListener('click', () => {
+  loadRecordPage(recordPaginationState.page - 1);
+});
+
+recordNextButton.addEventListener('click', () => {
+  loadRecordPage(recordPaginationState.page + 1);
+});
 
 cdkForm.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -111,19 +133,49 @@ async function boot() {
 }
 
 async function loadDashboard() {
-  const [summary, cdks, records] = await Promise.all([
-    api('/api/admin/summary'),
-    api('/api/admin/cdks'),
-    api('/api/admin/records')
-  ]);
+  setRecordPaginationLoading(true);
 
-  document.querySelector('#metric-active-cdks').textContent = summary.activeCdks;
-  document.querySelector('#metric-records').textContent = summary.totalRecords;
-  document.querySelector('#metric-mode').textContent = summary.mode === 'live' ? 'Live' : 'Demo';
+  try {
+    const [summary, cdks, records] = await Promise.all([
+      api('/api/admin/summary'),
+      api('/api/admin/cdks'),
+      api(getRecordsUrl(recordPaginationState.page))
+    ]);
 
-  renderCdks(cdks.cdks || []);
-  renderRecords(records.records || []);
-  window.lucide?.createIcons();
+    document.querySelector('#metric-active-cdks').textContent = summary.activeCdks;
+    document.querySelector('#metric-records').textContent = summary.totalRecords;
+    document.querySelector('#metric-mode').textContent = summary.mode === 'live' ? 'Live' : 'Demo';
+
+    renderCdks(cdks.cdks || []);
+    renderRecords(records.records || []);
+    updateRecordPagination(records.pagination);
+    window.lucide?.createIcons();
+  } finally {
+    setRecordPaginationLoading(false);
+  }
+}
+
+async function loadRecordPage(page) {
+  if (recordsLoading || page < 1 || page > recordPaginationState.totalPages) {
+    return;
+  }
+
+  setRecordPaginationLoading(true);
+
+  try {
+    const records = await api(getRecordsUrl(page));
+    renderRecords(records.records || []);
+    updateRecordPagination(records.pagination);
+  } catch (error) {
+    recordPageSummary.textContent = error.message;
+    recordPageSummary.classList.add('error');
+  } finally {
+    setRecordPaginationLoading(false);
+  }
+}
+
+function getRecordsUrl(page) {
+  return `/api/admin/records?page=${page}&pageSize=${RECORDS_PAGE_SIZE}`;
 }
 
 function renderCdks(items) {
@@ -176,6 +228,31 @@ function renderRecords(items) {
       `
     )
     .join('');
+}
+
+function updateRecordPagination(pagination = {}) {
+  recordPaginationState = {
+    page: Number(pagination.page) || 1,
+    pageSize: Number(pagination.pageSize) || RECORDS_PAGE_SIZE,
+    totalRecords: Number(pagination.totalRecords) || 0,
+    totalPages: Math.max(1, Number(pagination.totalPages) || 1)
+  };
+
+  const { page, pageSize, totalRecords, totalPages } = recordPaginationState;
+  const firstRecord = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRecord = Math.min(page * pageSize, totalRecords);
+
+  recordPageSummary.textContent =
+    totalRecords === 0 ? '共 0 条记录' : `第 ${firstRecord}-${lastRecord} 条，共 ${totalRecords} 条`;
+  recordPageSummary.classList.remove('error');
+  recordPageStatus.textContent = `第 ${page} / ${totalPages} 页`;
+}
+
+function setRecordPaginationLoading(isLoading) {
+  recordsLoading = isLoading;
+  recordPagination.setAttribute('aria-busy', String(isLoading));
+  recordPrevButton.disabled = isLoading || recordPaginationState.page <= 1;
+  recordNextButton.disabled = isLoading || recordPaginationState.page >= recordPaginationState.totalPages;
 }
 
 async function api(url, options = {}) {

@@ -12,6 +12,31 @@ const ENV_PATH = path.join(__dirname, '.env');
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'database.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const SECRET_PLACEHOLDERS = {
+  adminCdk: new Set(['change-this-admin-cdk', 'replace-with-your-admin-cdk']),
+  managementKey: new Set(['change-this-management-key', 'replace-with-cpa-management-key'])
+};
+const BRUTE_FORCE_LIMITS = {
+  claim: {
+    name: 'CDK claim',
+    maxFailures: 10,
+    windowMs: 10 * 60 * 1000,
+    lockoutMs: 15 * 60 * 1000
+  },
+  admin: {
+    name: 'admin login',
+    maxFailures: 5,
+    windowMs: 10 * 60 * 1000,
+    lockoutMs: 30 * 60 * 1000
+  }
+};
+const MAX_BRUTE_FORCE_ENTRIES = 10_000;
+const BRUTE_FORCE_CLEANUP_INTERVAL_MS = 60 * 1000;
+const RATE_LIMIT_IDENTITY_SECRET = crypto.randomBytes(32);
+const bruteForceTrackers = {
+  claim: createBruteForceTracker(BRUTE_FORCE_LIMITS.claim),
+  admin: createBruteForceTracker(BRUTE_FORCE_LIMITS.admin)
+};
 
 const MIME_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -27,22 +52,13 @@ const MIME_TYPES = new Map([
 ]);
 
 const DEFAULT_DB = {
-  inviteCdks: [
-    {
-      id: crypto.randomUUID(),
-      code: 'DEMO-CDK-001',
-      label: '默认邀请码',
-      enabled: true,
-      maxUses: 0,
-      used: 0,
-      createdAt: new Date().toISOString()
-    }
-  ],
+  inviteCdks: [],
   records: []
 };
 
-const config = await loadConfig();
+const config = validateConfig(await loadConfig());
 let db = await loadDatabase();
+await disableKnownDefaultCdks();
 const sessions = new Map();
 let creationQueue = Promise.resolve();
 
@@ -51,10 +67,7 @@ const server = createServer(async (req, res) => {
     await route(req, res);
   } catch (error) {
     if (error.status) {
-      return sendJson(res, error.status, {
-        error: error.code || 'request_failed',
-        message: error.publicMessage || '请求处理失败。'
-      });
+      return sendPublicError(res, error, 'request_failed', '请求处理失败。');
     }
     console.error(error);
     sendJson(res, 500, { error: 'server_error', message: '服务暂时不可用，请稍后重试。' });
@@ -83,9 +96,54 @@ async function loadConfig() {
       dryRun: parseBoolean(env.DRY_RUN, true)
     },
     security: {
-      adminSessionHours: Number(env.ADMIN_SESSION_HOURS || 12)
+      adminSessionHours: Number(env.ADMIN_SESSION_HOURS || 12),
+      trustProxy: parseBoolean(env.TRUST_PROXY, false)
     }
   };
+}
+
+function validateConfig(config) {
+  const issues = [];
+  const adminCdkIssue = getSecretConfigIssue('ADMIN_CDK', config.adminCdk, SECRET_PLACEHOLDERS.adminCdk);
+
+  if (adminCdkIssue) {
+    issues.push(adminCdkIssue);
+  }
+
+  if (!config.cpa.dryRun) {
+    const managementKeyIssue = getSecretConfigIssue(
+      'CPA_MANAGEMENT_KEY',
+      config.cpa.managementKey,
+      SECRET_PLACEHOLDERS.managementKey
+    );
+
+    if (managementKeyIssue) {
+      issues.push(managementKeyIssue);
+    }
+  }
+
+  if (issues.length > 0) {
+    const details = issues.map((issue) => `- ${issue}`).join('\n');
+    throw new Error(
+      `Refusing to start because secret configuration is unsafe:\n${details}\nSet unique values in .env or environment variables before restarting.`
+    );
+  }
+
+  return config;
+}
+
+function getSecretConfigIssue(name, value, placeholders) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (!normalized) {
+    return `${name} is required.`;
+  }
+
+  if (placeholders.has(normalized)) {
+    return `${name} still uses an example value.`;
+  }
+
+  return '';
 }
 
 async function loadDotEnv(filePath) {
@@ -160,6 +218,24 @@ async function saveDatabase(nextDb = db) {
   await writeFile(DB_PATH, `${JSON.stringify(nextDb, null, 2)}\n`, 'utf8');
 }
 
+async function disableKnownDefaultCdks() {
+  let changed = false;
+  const now = new Date().toISOString();
+
+  for (const invite of db.inviteCdks) {
+    if (invite.enabled && normalizeCdk(invite.code) === 'DEMO-CDK-001') {
+      invite.enabled = false;
+      invite.updatedAt = now;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await saveDatabase();
+    console.warn('Disabled the insecure default invite CDK. Create a unique CDK from the admin page.');
+  }
+}
+
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
@@ -219,7 +295,22 @@ async function route(req, res) {
 
   if (url.pathname === '/api/admin/records' && req.method === 'GET') {
     return requireAdmin(req, res, () => {
-      sendJson(res, 200, { records: db.records.slice(0, 500) });
+      const requestedPage = normalizePositiveInteger(url.searchParams.get('page'), 1, Number.MAX_SAFE_INTEGER);
+      const pageSize = normalizePositiveInteger(url.searchParams.get('pageSize'), 20, 100);
+      const totalRecords = db.records.length;
+      const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+      const page = Math.min(requestedPage, totalPages);
+      const start = (page - 1) * pageSize;
+
+      sendJson(res, 200, {
+        records: db.records.slice(start, start + pageSize),
+        pagination: {
+          page,
+          pageSize,
+          totalRecords,
+          totalPages
+        }
+      });
     });
   }
 
@@ -231,6 +322,9 @@ async function route(req, res) {
 }
 
 async function handleCreateKey(req, res) {
+  const rateLimitIdentity = getRateLimitIdentity(req);
+  enforceBruteForceLimit(bruteForceTrackers.claim, rateLimitIdentity);
+
   const body = await readJson(req);
   const nickname = sanitizeText(body.nickname, 32);
   const cdkCode = normalizeCdk(body.cdk);
@@ -243,30 +337,33 @@ async function handleCreateKey(req, res) {
     return sendJson(res, 400, { error: 'invalid_cdk', message: '请填写创建邀请码 CDK。' });
   }
 
-  const task = creationQueue.then(() => issueKey({ nickname, cdkCode, req }));
+  const task = creationQueue.then(() => issueKey({ nickname, cdkCode, req, rateLimitIdentity }));
   creationQueue = task.catch(() => {});
   const result = await task.catch((error) => ({ error }));
 
   if (result.error) {
-    const status = result.error.status || 500;
-    return sendJson(res, status, {
-      error: result.error.code || 'create_failed',
-      message: result.error.publicMessage || '创建失败，请稍后重试。'
-    });
+    return sendPublicError(res, result.error, 'create_failed', '创建失败，请稍后重试。');
   }
 
   sendJson(res, 201, result);
 }
 
-async function issueKey({ nickname, cdkCode, req }) {
+async function issueKey({ nickname, cdkCode, req, rateLimitIdentity }) {
+  enforceBruteForceLimit(bruteForceTrackers.claim, rateLimitIdentity);
+
   const invite = db.inviteCdks.find((item) => normalizeCdk(item.code) === cdkCode);
-  if (!invite || !invite.enabled) {
+  const inviteUnavailable =
+    !invite || !invite.enabled || (invite.maxUses > 0 && invite.used >= invite.maxUses);
+
+  if (inviteUnavailable) {
+    const retryAfterSeconds = recordBruteForceFailure(bruteForceTrackers.claim, rateLimitIdentity);
+    if (retryAfterSeconds > 0) {
+      throw bruteForceError(retryAfterSeconds);
+    }
     throw publicError(403, 'cdk_not_available', '邀请码不可用，请确认后再试。');
   }
 
-  if (invite.maxUses > 0 && invite.used >= invite.maxUses) {
-    throw publicError(403, 'cdk_exhausted', '邀请码使用次数已用完。');
-  }
+  clearBruteForceFailures(bruteForceTrackers.claim, rateLimitIdentity);
 
   const apiKey = await createCpaApiKey();
   const now = new Date().toISOString();
@@ -342,12 +439,21 @@ async function cpaRequest(pathname, options = {}) {
 }
 
 async function handleAdminLogin(req, res) {
+  const rateLimitIdentity = getRateLimitIdentity(req);
+  enforceBruteForceLimit(bruteForceTrackers.admin, rateLimitIdentity);
+
   const body = await readJson(req);
   const submitted = String(body.adminCdk || '');
 
   if (!config.adminCdk || !safeEqual(submitted, config.adminCdk)) {
+    const retryAfterSeconds = recordBruteForceFailure(bruteForceTrackers.admin, rateLimitIdentity);
+    if (retryAfterSeconds > 0) {
+      throw bruteForceError(retryAfterSeconds);
+    }
     return sendJson(res, 401, { error: 'invalid_admin_cdk', message: '管理 CDK 不正确。' });
   }
+
+  clearBruteForceFailures(bruteForceTrackers.admin, rateLimitIdentity);
 
   const token = crypto.randomBytes(32).toString('base64url');
   const expiresAt = Date.now() + config.security.adminSessionHours * 60 * 60 * 1000;
@@ -562,10 +668,112 @@ function publicError(status, code, publicMessage) {
   return error;
 }
 
+function sendPublicError(res, error, fallbackCode, fallbackMessage) {
+  const retryAfterSeconds = Math.max(0, Math.ceil(Number(error.retryAfterSeconds) || 0));
+  const payload = {
+    error: error.code || fallbackCode,
+    message: error.publicMessage || fallbackMessage
+  };
+
+  if (retryAfterSeconds > 0) {
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    payload.retryAfter = retryAfterSeconds;
+  }
+
+  return sendJson(res, error.status || 500, payload);
+}
+
+function bruteForceError(retryAfterSeconds) {
+  const error = publicError(429, 'too_many_attempts', '尝试次数过多，请稍后再试。');
+  error.retryAfterSeconds = retryAfterSeconds;
+  return error;
+}
+
+function createBruteForceTracker(options) {
+  return {
+    ...options,
+    entries: new Map(),
+    lastCleanupAt: 0
+  };
+}
+
+function getRateLimitIdentity(req) {
+  const clientIp = getClientIp(req) || 'unknown';
+  return crypto.createHmac('sha256', RATE_LIMIT_IDENTITY_SECRET).update(clientIp).digest('hex');
+}
+
+function enforceBruteForceLimit(tracker, identity) {
+  const retryAfterSeconds = getBruteForceRetryAfter(tracker, identity);
+  if (retryAfterSeconds > 0) {
+    throw bruteForceError(retryAfterSeconds);
+  }
+}
+
+function getBruteForceRetryAfter(tracker, identity, now = Date.now()) {
+  cleanupBruteForceTracker(tracker, now);
+  const state = tracker.entries.get(identity);
+
+  if (!state || state.lockedUntil <= now) {
+    return 0;
+  }
+
+  return Math.ceil((state.lockedUntil - now) / 1000);
+}
+
+function recordBruteForceFailure(tracker, identity, now = Date.now()) {
+  cleanupBruteForceTracker(tracker, now);
+  let state = tracker.entries.get(identity);
+
+  if (!state || now - state.windowStartedAt >= tracker.windowMs) {
+    state = {
+      failures: 0,
+      windowStartedAt: now,
+      lockedUntil: 0
+    };
+  }
+
+  state.failures += 1;
+
+  if (state.failures >= tracker.maxFailures) {
+    state.lockedUntil = now + tracker.lockoutMs;
+    console.warn(
+      `Brute-force protection locked ${tracker.name} attempts for client ${identity.slice(0, 12)}.`
+    );
+  }
+
+  if (!tracker.entries.has(identity) && tracker.entries.size >= MAX_BRUTE_FORCE_ENTRIES) {
+    const oldestIdentity = tracker.entries.keys().next().value;
+    tracker.entries.delete(oldestIdentity);
+  }
+
+  tracker.entries.set(identity, state);
+  return state.lockedUntil > now ? Math.ceil((state.lockedUntil - now) / 1000) : 0;
+}
+
+function clearBruteForceFailures(tracker, identity) {
+  tracker.entries.delete(identity);
+}
+
+function cleanupBruteForceTracker(tracker, now) {
+  if (now - tracker.lastCleanupAt < BRUTE_FORCE_CLEANUP_INTERVAL_MS) {
+    return;
+  }
+
+  tracker.lastCleanupAt = now;
+  for (const [identity, state] of tracker.entries) {
+    const expiresAt = Math.max(state.windowStartedAt + tracker.windowMs, state.lockedUntil);
+    if (expiresAt <= now) {
+      tracker.entries.delete(identity);
+    }
+  }
+}
+
 function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0].trim();
+  if (config.security.trustProxy) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      return forwarded.split(',')[0].trim();
+    }
   }
   return req.socket.remoteAddress || '';
 }
@@ -594,6 +802,14 @@ function normalizeMaxUses(value) {
   return Math.floor(numeric);
 }
 
+function normalizePositiveInteger(value, fallback, max) {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 1) {
+    return fallback;
+  }
+  return Math.min(numeric, max);
+}
+
 function parseBoolean(value, fallback) {
   if (value === undefined) {
     return fallback;
@@ -602,9 +818,9 @@ function parseBoolean(value, fallback) {
 }
 
 function safeEqual(a, b) {
-  const left = Buffer.from(String(a));
-  const right = Buffer.from(String(b));
-  return left.length === right.length && crypto.timingSafeEqual(left, right);
+  const left = crypto.createHash('sha256').update(String(a)).digest();
+  const right = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(left, right);
 }
 
 function getSessionToken(req) {
